@@ -4,3 +4,9 @@
 # Environment / secrets
 .env
 .env.local
+
+# macOS metadata
+.DS_Store
+
+# World data files
+week0_explore/preview/data/world/
