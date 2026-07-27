@@ -1,0 +1,36 @@
+GEM
+  remote: https://rubygems.org/
+  specs:
+    dotenv (3.2.0)
+    language_server-protocol (3.17.0.6)
+    logger (1.7.0)
+    prism (1.9.0)
+    rbs (4.0.3)
+      logger
+      prism (>= 1.6.0)
+      tsort
+    ruby-lsp (0.26.10)
+      language_server-protocol (~> 3.17.0)
+      prism (>= 1.2, < 2.0)
+      rbs (>= 3, < 5)
+    tsort (0.2.0)
+
+PLATFORMS
+  arm64-darwin-25
+  ruby
+
+DEPENDENCIES
+  dotenv
+  ruby-lsp
+
+CHECKSUMS
+  dotenv (3.2.0)
+  language_server-protocol (3.17.0.6)
+  logger (1.7.0)
+  prism (1.9.0)
+  rbs (4.0.3)
+  ruby-lsp (0.26.10)
+  tsort (0.2.0)
+
+BUNDLED WITH
+  4.0.16
