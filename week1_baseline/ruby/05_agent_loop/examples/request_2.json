@@ -1,0 +1,71 @@
+{
+  "model": "claude-haiku-4-5",
+  "system": "You are a MUD Journay Player Agent.  \n\nYou are playing the MUD on behalf of the player, \nThe player will issue you goals to complete. \n\n# Exploring\nYou are always told where you are. Before every one of your turns a `[here]` block\nis appended to the conversation with the current room, its exits and where they\nlead, what is in the room with you, and your own vitals. It is refreshed after\nevery move — there is no tool to call for it, and nothing to remember to do.\n\nRead the exits line. A `✓` means you have already stood in that destination; a `?`\nmeans you have not, and that is your exploration frontier. Prefer the `?` when you\nare exploring and the `✓` when you are travelling somewhere you know.\n\nThe direction on each exit is a valid `move` direction — copy it exactly as written.\n\nThe room description is given to you once, the first time you arrive. Later visits\nshow only the name, because nothing about a room's prose changes between visits.\n\n# MUD Session\nThe MUD session connects and logs in automatically the moment you send your first gameplay action.\nThere is no connect tool.  A status check reporting \"disconnected\" just means no action has been sent yet,  \nNever ask the user to connect for you or claim you have no way to establish a connection: simply act (e.g. call look) and the session will open on its own.\n\nAlways say good morning first to the player.\n\n## Strategy\nFights you have lost are remembered for you. When a creature in the room is one you\nhave died to or fled from before, the `here:` line says so along with the level you\nwere at the time — e.g. `you died against this at level 3`. Weigh that against your\ncurrent level before swinging: the same minotaur that killed you at 3 may be a fair\nfight at 8, and the reverse is never true.\n\nA `\"...\"` in the `here:` line is the MUD's own `consider` verdict. If it instead\nsays `threat unknown at this level`, the reading was taken before you levelled and\nis no longer worth trusting.\n\nReasons to walk away rather than fight:\n\n- too low level\n- underequipped",
+  "max_tokens": 1024,
+  "tools": [
+    {
+      "name": "read_file",
+      "description": "Read the contents of a file from disk",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "The file path to read"
+          }
+        },
+        "required": [
+          "path"
+        ]
+      }
+    },
+    {
+      "name": "list_directory",
+      "description": "List the files in a directory",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "The directory path to list"
+          }
+        },
+        "required": [
+          "path"
+        ]
+      }
+    }
+  ],
+  "messages": [
+    {
+      "role": "user",
+      "content": "Read the README.md file and summarise what this MUD player assistant framework can do."
+    },
+    {
+      "role": "assistant",
+      "content": [
+        {
+          "type": "tool_use",
+          "id": "toolu_016GkURkNS8HqLCcuB4TcXGz",
+          "name": "read_file",
+          "input": {
+            "path": "README.md"
+          },
+          "caller": {
+            "type": "direct"
+          }
+        }
+      ]
+    },
+    {
+      "role": "user",
+      "content": [
+        {
+          "type": "tool_result",
+          "tool_use_id": "toolu_016GkURkNS8HqLCcuB4TcXGz",
+          "content": "# The Agent Loop\n\nThe Agent Loop is the heart of BOUKENSHA. Everything built before this — the structs, the registry, the prompt builder, the client — was setup. The loop is where the agent actually does work.\n\n## New Files\n\n| File | Description |\n|---|---|\n| `lib/boukensha/agent.rb` | The agent loop — sends requests, dispatches tools, and knows when to stop |\n| `lib/boukensha/backends/base.rb` | Shared backend model validation and model metadata helpers |\n| `lib/boukensha/tasks/base.rb` | Shared task configuration helpers for provider, model, and prompts |\n| `lib/boukensha/tasks/player.rb` | Player task definition |\n| `lib/boukensha/backends/openai.rb` | OpenAI Chat Completions backend |\n| `lib/boukensha/backends/gemini.rb` | Google Gemini backend |\n| `lib/boukensha/backends/ollama_cloud.rb` | Ollama Cloud backend (hosted Ollama, authenticated with an API key) |\n| `prompts/system.md` | Default system prompt used when the player task does not override it |\n\n## Updated Files\n\n| File | Change |\n|---|---|\n| `lib/boukensha/errors.rb` | Added `LoopError` for runaway agents |\n| `lib/boukensha/config.rb` | Reads `tasks.player` instead of top-level provider/model settings |\n| `lib/boukensha/context.rb` | Carries the active task object alongside messages and tools |\n| `lib/boukensha/prompt_builder.rb` | Added `parse_response`, delegating to the backend |\n| `lib/boukensha/backends/anthropic.rb` | Model is configurable and validated via backend-owned metadata; added `parse_response` |\n| `lib/boukensha/backends/ollama.rb` | Model is configurable and validated via backend-owned metadata; added `parse_response` and `assistant_message` |\n| `lib/boukensha/backends/*.rb` | Backends own supported model tables with context windows and cost metadata |\n\n## How It Works\n\n```\nsend messages to API\n        ↓\nstop_reason == \"tool_use\"?\n    yes → extract tool calls\n        → dispatch each tool via Registry\n        → inject results as tool_result messages\n        → go back to top\n    no  → return final text response\n```\n\n## Boukensha::Agent\n\n| Method | Description |\n|---|---|\n| `run` | Starts the loop and returns the final text response when the agent is done |\n\n## Every Backend Speaks the Same Normalized Shape\n\nFive providers means five different response formats — Anthropic nests tool calls inside `content`, Ollama puts them in `message.tool_calls`, OpenAI nests them under `choices[0].message.tool_calls`, and Gemini calls them `functionCall` parts. Rather than teach the Agent loop about each of these, every backend implements `parse_response`, converting its raw response into one common shape:\n\n```ruby\n{\n  stop_reason: \"tool_use\" | \"end_turn\",\n  content: [\n    { \"type\" => \"text\", \"text\" => \"...\" },\n    { \"type\" => \"tool_use\", \"id\" => \"...\", \"name\" => \"...\", \"input\" => { ... } }\n  ]\n}\n```\n\n`Boukensha::Agent` only ever sees this shape — it calls `@builder.parse_response(response)`, which delegates to the backend, and never inspects a raw provider response. That's what let `agent.rb` shrink from a handful of private helpers juggling two response shapes down to a single `if parsed[:stop_reason] == \"tool_use\"` branch.\n\nThe conversion also runs in reverse. When the conversation history is replayed on the next request, Ollama, Ollama Cloud, OpenAI, and Gemini each rebuild a provider-specific assistant message from the normalized `content` blocks via a private `assistant_message` (or `assistant_parts`) method — the inverse of `parse_response`. Anthropic's `content` array doubles as both the normalized shape and the wire format, so it needs no extra conversion.\n\n**Tool call IDs aren't universal.** Anthropic and OpenAI assign every tool call a unique `id`, echoed back in the `tool_result`. Ollama, Ollama Cloud, and Gemini don't assign call ids at all — those backends reuse the tool's `name` as its `id` and match the `tool_result` back to the call by name.\n\n## Task Configuration\n\nThis step uses the task-based configuration introduced in the earlier baseline steps:\n\n```yaml\ntasks:\n  player:\n    provider: anthropic\n    model: claude-haiku-4-5\n    prompt_override:\n      system: true\n    max_iterations: 25\n    max_output_tokens: 1024\n```\n\nWhen `prompt_override.system` is true, Boukensha reads `.boukensha/prompts/player/system.md`.\nOtherwise it falls back to this step's shipped `prompts/system.md`.\n`max_iterations` controls model round-trips per turn before wind-down, and `max_output_tokens` is passed to each model reply.\n\nEvery backend still takes a `model:` keyword argument; `examples/example.rb` now gets both provider and model from `tasks.player`, then builds the matching backend. The backend validates the model at construction time and exposes metadata such as `context_window`, `usage_unit`, and token cost estimates for later logging steps.\n\n| Provider | Backend | Requires |\n|---|---|---|\n| `anthropic` | `Boukensha::Backends::Anthropic` | `ANTHROPIC_API_KEY` |\n| `openai` | `Boukensha::Backends::OpenAI` | `OPENAI_API_KEY` |\n| `gemini` | `Boukensha::Backends::Gemini` | `GEMINI_API_KEY` |\n| `ollama` | `Boukensha::Backends::Ollama` | a local Ollama server (`host:` defaults to `http://localhost:11434`) |\n| `ollama_cloud` | `Boukensha::Backends::OllamaCloud` | `OLLAMA_API_KEY` |\n\n```ruby\n# Anthropic\nbackend = Boukensha::Backends::Anthropic.new(\n  api_key: ENV.fetch(\"ANTHROPIC_API_KEY\"),\n  model:   \"claude-sonnet-4-5\"\n)\n\n# Ollama running locally\nbackend = Boukensha::Backends::Ollama.new(model: \"gemma4\")\n\n# Ollama Cloud\nbackend = Boukensha::Backends::OllamaCloud.new(\n  api_key: ENV.fetch(\"OLLAMA_API_KEY\"),\n  model:   \"kimi-k2.5:cloud\"\n)\n```\n\n## What the Loop Looks Like\n\nRunning the example produces output like this:\n\n```\n=== BOUKENSHA Step 5: Agent Loop ===\n\n[iteration 1]\n  tool call → list_directory({:path=>\".\"})\n  tool result → README.md, examples, lib\n\n[iteration 2]\n  tool call → read_file({:path=>\"lib/boukensha.rb\"})\n  tool result → module Boukensha...\n\n=== FINAL RESPONSE ===\nHere are the files in the current directory: README.md, examples, lib.\nThe contents of lib/boukensha.rb are...\n```\n\n## Considerations\n\n**The assistant message must be stored before the tool result.** The Anthropic API requires the assistant's tool_use block to appear in the message history before its corresponding tool_result. BOUKENSHA handles this in `handle_tool_calls` — get the order wrong and the API rejects the request.\n\n**The model can call multiple tools in one turn.** The loop handles this by iterating over all tool_use blocks in a single response before making the next API call.\n\n**`MAX_ITERATIONS` is a turn ceiling.** A poorly prompted agent can loop forever if the model keeps calling tools. BOUKENSHA stops starting new work after 25 iterations by default and makes one short wrap-up call with tools disabled. This keeps the turn bounded while still returning a useful final response.\n\n**The agent has no way to stop itself.** The model signals it is done via `stop_reason: \"end_turn\"`. BOUKENSHA watches for that signal and exits the loop. The agent never decides unilaterally to stop.\n\n\n## Run Example\n\n```sh\n./week1_baseline/bin/05_agent_loop \n```\n"
+        }
+      ]
+    }
+  ]
+}
